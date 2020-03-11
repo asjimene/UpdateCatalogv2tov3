@@ -9,19 +9,77 @@ $V3CategoryDefinition = @"
 }
 "@
 
+# Create a temp folder to work in
+$TempFolder = "$env:TEMP\Catalog-$(New-Guid)"
+$TempCABExtractPath = "$TempFolder\ExtractedCab"
+if (Test-Path $TempFolder) {
+    Remove-Item -Path $TempFolder -Recurse -Force -Confirm:$false
+}
+New-Item -ItemType Directory -Path $TempFolder -Force
+New-Item -ItemType Directory -Path $TempCABExtractPath -Force
 
+$CatalogURLs = @{ "Dell" = "https://downloads.dell.com/Catalog/DellSDPCatalogPC.cab" ; "Lenovo" = "https://download.lenovo.com/luc/v2/LenovoUpdatesCatalog2v2.cab" }
+
+$SelectedCatalog = $CatalogURLs |  Out-GridView -Title "Select the CAB to Update" -OutputMode Single
+$Cabfile = "$TempFolder\DriverUpdateCab.cab"
+
+Write-Output "Downloading Cab: $Cabfile"
+Invoke-WebRequest -Uri $SelectedCatalog.Value -OutFile $Cabfile
+Write-Output "Downloaded $Cabfile"
+
+Write-Output "Extracting Cab: $Cabfile"
+Start-Process expand.exe -ArgumentList "`"$CABFile`" -F:* `"$TempCABExtractPath`"" -Wait
+Write-Output "Completed Extracting Cab file"
+
+Write-Output "importing Catalog"
+$CatalogXML = [xml](Get-Content "$TempCABExtractPath\*.xml")
+Write-Output "Completed Catalog Import"
+
+New-Item -ItemType Directory -Path $TempCABExtractPath -Name "V3" -Force -ErrorAction SilentlyContinue
+Pause
+$AllCategoryIDs = @()
+
+Write-Output "Processing Manufacturer Category: $CatalogType"
+$ManufacturerCategoryID = (New-Guid).ToString()
+$AllCategoryIDs += $ManufacturerCategoryID
+$ManufacturerCategoryMembers = $CatalogXML.SystemsManagementCatalog.SoftwareDistributionPackage
+
+$ManufacturerJson = $V3CategoryDefinition | ConvertFrom-Json
+$ManufacturerJson.DisplayName = $CatalogType
+$ManufacturerJson.Id = $ManufacturerCategoryID
+$ManufacturerJson.Members = $ManufacturerCategoryMembers.Properties.PackageID
+$ManufacturerJson | ConvertTo-Json | Out-File -FilePath "$TempCABExtractPath\V3\$ManufacturerCategoryID.json" -Encoding utf8 -Force
+
+switch ($CatalogType) {
+    Dell {     
+        $ParentCategories = "Drivers and Applications", "bios", "firmware"
+        $ChildCategories = "OptiPlex", "Precision", "Latitude", "XPS", "Alienware", "Inspiron", "Vostro", "PowerEdge" 
+    }
+    
+    Lenovo {
+
+
+    }
+}
 $CatalogType = "Dell"
 
 if ($CatalogType -eq "Dell") {
-    $ParentCategories = "Drivers and Applications", "bios", "firmware"
-    $ChildCategories = "OptiPlex", "Precision", "Latitude", "XPS", "Alienware", "Inspiron", "Vostro", "PowerEdge"
+    foreach ($model in $lenovomodels.ModelList.Model) {
+        Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
+        foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
+           $ModelMatch = (Select-XML $Update.InstallableItem.ApplicabilityRules.IsInstallable -XPath ".//*[@WqlQuery]").node | Where-Object {$_.WQLQuery -like "*$($Model.Bios.Code)*"}
+           if ($ModelMatch){
+              Write-host $Update.LocalizedProperties.Title
+           }
+        }
+     }
 }
 
 $CatalogType = "Lenovo"
 
 if ($CatalogType -eq "Lenovo") {
-## Test code please ignore
-<#
+    ## Test code please ignore
+    <#
 foreach ($model in $lenovomodels.ModelList.Model) {
     Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
     foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
@@ -35,38 +93,8 @@ foreach ($model in $lenovomodels.ModelList.Model) {
 }
 
 
-if ($((Get-Item "$PSScriptRoot\*.cab").FullName.Count) -gt 1) {
-    $CabFile = (Get-Item "$PSScriptRoot\*.cab" | Out-GridView -Title "Select the CAB to Update" -OutputMode Single).FullName
-}
-else {
-    $CabFile = (Get-Item "$PSScriptRoot\*.cab").FullName
-}
-$TempCABExtractPath = "$env:TEMP\Catalog-$(New-Guid)"
-if (Test-Path $TempCABExtractPath) {
-    Remove-Item -Path $TempCABExtractPath -Recurse -Force -Confirm:$false
-}
-New-Item -ItemType Directory -Path $TempCABExtractPath -Force
-Write-Output "Extracting Cab: $Cabfile"
-Start-Process expand.exe -ArgumentList "`"$CABFile`" -F:* `"$TempCABExtractPath`"" -Wait
-Write-Output "Completed Extracting Cab file"
 
-Write-Output "importing Catalog"
-$CatalogXML = [xml](Get-Content "$TempCABExtractPath\*.xml")
-Write-Output "Completed Catalog Import"
 
-New-Item -ItemType Directory -Path $TempCABExtractPath -Name "V3" -Force -ErrorAction SilentlyContinue
-$AllCategoryIDs = @()
-
-Write-Output "Processing Manufacturer Category: $CatalogType"
-$ManufacturerCategoryID = (New-Guid).ToString()
-$AllCategoryIDs += $ManufacturerCategoryID
-$ManufacturerCategoryMembers = $CatalogXML.SystemsManagementCatalog.SoftwareDistributionPackage
-
-$ManufacturerJson = $V3CategoryDefinition | ConvertFrom-Json
-$ManufacturerJson.DisplayName = $CatalogType
-$ManufacturerJson.Id = $ManufacturerCategoryID
-$ManufacturerJson.Members = $ManufacturerCategoryMembers.Properties.PackageID
-$ManufacturerJson | ConvertTo-Json | Out-File -FilePath "$TempCABExtractPath\V3\$ManufacturerCategoryID.json" -Encoding utf8 -Force
 foreach ($ParentCategory in $ParentCategories) {
     Write-Output "Processing Parent Category: $ParentCategory"
     $ParentCategoryID = (New-Guid).ToString()
