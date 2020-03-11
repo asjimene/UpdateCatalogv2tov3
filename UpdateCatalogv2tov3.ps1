@@ -36,7 +36,6 @@ $CatalogXML = [xml](Get-Content "$TempCABExtractPath\*.xml")
 Write-Output "Completed Catalog Import"
 
 New-Item -ItemType Directory -Path $TempCABExtractPath -Name "V3" -Force -ErrorAction SilentlyContinue
-Pause
 $AllCategoryIDs = @()
 
 Write-Output "Processing Manufacturer Category: $CatalogType"
@@ -57,40 +56,18 @@ switch ($CatalogType) {
     }
     
     Lenovo {
-
-
+        foreach ($model in $lenovomodels.ModelList.Model) {
+            Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
+            foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
+               $ModelMatch = (Select-XML $Update.InstallableItem.ApplicabilityRules.IsInstallable -XPath ".//*[@WqlQuery]").node | Where-Object {$_.WQLQuery -like "*$($Model.Bios.Code)*"}
+               if ($ModelMatch){
+                  Write-host $Update.LocalizedProperties.Title
+               }
+            }
+         }
     }
 }
-$CatalogType = "Dell"
 
-if ($CatalogType -eq "Dell") {
-    foreach ($model in $lenovomodels.ModelList.Model) {
-        Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
-        foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
-           $ModelMatch = (Select-XML $Update.InstallableItem.ApplicabilityRules.IsInstallable -XPath ".//*[@WqlQuery]").node | Where-Object {$_.WQLQuery -like "*$($Model.Bios.Code)*"}
-           if ($ModelMatch){
-              Write-host $Update.LocalizedProperties.Title
-           }
-        }
-     }
-}
-
-$CatalogType = "Lenovo"
-
-if ($CatalogType -eq "Lenovo") {
-    ## Test code please ignore
-    <#
-foreach ($model in $lenovomodels.ModelList.Model) {
-    Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
-    foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
-       $ModelMatch = (Select-XML $Update.InstallableItem.ApplicabilityRules.IsInstallable -XPath ".//*[@WqlQuery]").node | Where-Object {$_.WQLQuery -like "*$($Model.Bios.Code)*"}
-       if ($ModelMatch){
-          Write-host $Update.LocalizedProperties.Title
-       }
-    }
- }
-#>
-}
 
 
 
@@ -99,7 +76,15 @@ foreach ($ParentCategory in $ParentCategories) {
     Write-Output "Processing Parent Category: $ParentCategory"
     $ParentCategoryID = (New-Guid).ToString()
     $AllCategoryIDs += $ParentCategoryID
-    $ParentCategoryMembers = $CatalogXML.SystemsManagementCatalog.SoftwareDistributionPackage | Where-Object { $_.Properties.ProductName -eq $ParentCategory }
+    switch ($CatalogType) {
+        Dell { 
+            $ParentCategoryMembers = $CatalogXML.SystemsManagementCatalog.SoftwareDistributionPackage | Where-Object { $_.Properties.ProductName -eq $ParentCategory }
+         }
+        Lenovo {
+
+        }
+    }
+    
 
     $ParentJson = $V3CategoryDefinition | ConvertFrom-Json
     $ParentJson.DisplayName = $ParentCategory
@@ -111,8 +96,14 @@ foreach ($ParentCategory in $ParentCategories) {
         Write-Output "Processing Child Category: $ChildCategory"
         $ChildCategoryID = (New-Guid).ToString()
         $AllCategoryIDs += $ChildCategoryID
-        $ChildCategoryMembers = $ParentCategoryMembers | Where-Object { $_.LocalizedProperties.Description -match $ChildCategory }
-        
+        switch ($CatalogType) {
+            Dell { 
+                $ChildCategoryMembers = $ParentCategoryMembers | Where-Object { $_.LocalizedProperties.Description -match $ChildCategory }
+             }
+            Lenovo {
+                
+            }
+        }
         $ChildJson = $V3CategoryDefinition | ConvertFrom-Json
         $ChildJson.DisplayName = "$ParentCategory - $ChildCategory"
         $ChildJson.Id = $ChildCategoryID
