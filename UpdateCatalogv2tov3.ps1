@@ -21,6 +21,7 @@ New-Item -ItemType Directory -Path $TempCABExtractPath -Force
 $CatalogURLs = @{ "Dell" = "https://downloads.dell.com/Catalog/DellSDPCatalogPC.cab" ; "Lenovo" = "https://download.lenovo.com/luc/v2/LenovoUpdatesCatalog2v2.cab" }
 
 $SelectedCatalog = $CatalogURLs |  Out-GridView -Title "Select the CAB to Update" -OutputMode Single
+$CatalogType = $SelectedCatalog.Name
 $Cabfile = "$TempFolder\DriverUpdateCab.cab"
 
 Write-Output "Downloading Cab: $Cabfile"
@@ -60,16 +61,13 @@ switch ($CatalogType) {
         $ModelDownloadDestination = "$TempFolder\models.xml"
         Invoke-WebRequest -Uri $ModelDownloadURL -OutFile $ModelDownloadDestination
         [xml]$LenovoModels = Get-Content $ModelDownloadDestination -Raw
-        $ParentCategories = ($lenovomodels.ModelList.Model.name).Split(" ") | Where-Object {$_ -like "think*"} | select -Unique
-        
-        foreach ($model in $lenovomodels.ModelList.Model) {
-            Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
-            foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
-               $ModelMatch = (Select-XML $Update.InstallableItem.ApplicabilityRules.IsInstallable -XPath ".//*[@WqlQuery]").node | Where-Object {$_.WQLQuery -like "*$($Model.Bios.Code)*"}
-               if ($ModelMatch){
-                  Write-host $Update.LocalizedProperties.Title
-               }
-            }
+        #$ParentCategories = ($lenovomodels.ModelList.Model.name).Split(" ") | Where-Object {$_ -like "think*"} | Select-Object -Unique
+        $ParentCategories = "Device Drivers"
+        $ChildCategories = @()
+        $LenovoBIOSCodeTable = @{}
+        foreach ($Model in $LenovoModels.ModelList.Model) {
+            $ChildCategories += $Model.Name
+            $LenovoBIOSCodeTable[$Model.Name] = $Model.Bios.Code
          }
     }
 }
@@ -83,7 +81,7 @@ foreach ($ParentCategory in $ParentCategories) {
             $ParentCategoryMembers = $CatalogXML.SystemsManagementCatalog.SoftwareDistributionPackage | Where-Object { $_.Properties.ProductName -eq $ParentCategory }
          }
         Lenovo {
-
+            $ParentCategoryMembers = $CatalogXML.SystemsManagementCatalog.SoftwareDistributionPackage
         }
     }
     $ParentJson = $V3CategoryDefinition | ConvertFrom-Json
@@ -96,12 +94,19 @@ foreach ($ParentCategory in $ParentCategories) {
         Write-Output "Processing Child Category: $ChildCategory"
         $ChildCategoryID = (New-Guid).ToString()
         $AllCategoryIDs += $ChildCategoryID
+        $ChildCategoryMembers = @()
         switch ($CatalogType) {
             Dell { 
                 $ChildCategoryMembers = $ParentCategoryMembers | Where-Object { $_.LocalizedProperties.Description -match $ChildCategory }
              }
             Lenovo {
-                
+                foreach ($Update in $ParentCategoryMembers) {
+                    $ModelMatch = (Select-XML $Update.InstallableItem.ApplicabilityRules.IsInstallable -XPath ".//*[@WqlQuery]").node | Where-Object {$_.WQLQuery -like "*$($LenovoBIOSCodeTable[$ChildCategory])*"}
+                    if ($ModelMatch){
+                        Write-Output "New Child Category Member: $($Update.LocalizedProperties.Title)"
+                        $ChildCategoryMembers += $Update
+                    }
+                 }
             }
         }
         $ChildJson = $V3CategoryDefinition | ConvertFrom-Json
