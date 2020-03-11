@@ -56,6 +56,12 @@ switch ($CatalogType) {
     }
     
     Lenovo {
+        $ModelDownloadURL = "https://download.lenovo.com/cdrt/catalog/models.xml"
+        $ModelDownloadDestination = "$TempFolder\models.xml"
+        Invoke-WebRequest -Uri $ModelDownloadURL -OutFile $ModelDownloadDestination
+        [xml]$LenovoModels = Get-Content $ModelDownloadDestination -Raw
+        $ParentCategories = ($lenovomodels.ModelList.Model.name).Split(" ") | Where-Object {$_ -like "think*"} | select -Unique
+        
         foreach ($model in $lenovomodels.ModelList.Model) {
             Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
             foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
@@ -67,10 +73,6 @@ switch ($CatalogType) {
          }
     }
 }
-
-
-
-
 
 foreach ($ParentCategory in $ParentCategories) {
     Write-Output "Processing Parent Category: $ParentCategory"
@@ -84,8 +86,6 @@ foreach ($ParentCategory in $ParentCategories) {
 
         }
     }
-    
-
     $ParentJson = $V3CategoryDefinition | ConvertFrom-Json
     $ParentJson.DisplayName = $ParentCategory
     $ParentJson.Id = $ParentCategoryID
