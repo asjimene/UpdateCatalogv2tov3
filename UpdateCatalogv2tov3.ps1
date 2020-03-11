@@ -17,6 +17,23 @@ if ($CatalogType -eq "Dell") {
     $ChildCategories = "OptiPlex", "Precision", "Latitude", "XPS", "Alienware", "Inspiron", "Vostro", "PowerEdge"
 }
 
+$CatalogType = "Lenovo"
+
+if ($CatalogType -eq "Lenovo") {
+## Test code please ignore
+<#
+foreach ($model in $lenovomodels.ModelList.Model) {
+    Write-host "`r`n$($model.Name) -  $($Model.Bios.Code)"
+    foreach ($Update in $($lenovocat.SystemsManagementCatalog.SoftwareDistributionPackage)) {
+       $ModelMatch = (Select-XML $Update.InstallableItem.ApplicabilityRules.IsInstallable -XPath ".//*[@WqlQuery]").node | Where-Object {$_.WQLQuery -like "*$($Model.Bios.Code)*"}
+       if ($ModelMatch){
+          Write-host $Update.LocalizedProperties.Title
+       }
+    }
+ }
+#>
+}
+
 
 if ($((Get-Item "$PSScriptRoot\*.cab").FullName.Count) -gt 1) {
     $CabFile = (Get-Item "$PSScriptRoot\*.cab" | Out-GridView -Title "Select the CAB to Update" -OutputMode Single).FullName
